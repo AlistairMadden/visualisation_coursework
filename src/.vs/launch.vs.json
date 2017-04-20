@@ -1,0 +1,13 @@
+{
+  "version": "0.2.1",
+  "defaults": {},
+  "configurations": [
+    {
+      "type": "default",
+      "project": "CMakeLists.txt",
+      "projectTarget": "visualisation_coursework",
+      "name": "visualisation_coursework_12_1e-4 _400",
+      "args": [ "20 1e-4 400" ]
+    }
+  ]
+}
