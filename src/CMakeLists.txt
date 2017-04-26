@@ -6,7 +6,7 @@ project (visualisation_coursework)
 find_package(VTK REQUIRED)
 include(${VTK_USE_FILE})
 
-set(CMAKE_CXX_FLAGS "-std=c++0x")
+set(CMAKE_CXX_FLAGS "-std=c++0x -pthread")
 
 add_executable (visualisation_coursework visualisation_coursework.cpp)
 
