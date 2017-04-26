@@ -49,6 +49,7 @@
 #include <vtkLookupTable.h>
 #include <thread>
 #include <vtkInteractorStyleTrackballCamera.h>
+#include <vtkCommand.h>
 
 /**
 * Number of cell we have per axis
