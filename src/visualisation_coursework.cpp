@@ -46,100 +46,9 @@
 #include <vtkPointData.h>
 #include <vtkPolyDataWriter.h>
 #include <vtkDataSet.h>
-
-void makeCylinder()
-{
-	// Create a sphere
-	vtkSmartPointer<vtkCylinderSource> cylinderSource =
-		vtkSmartPointer<vtkCylinderSource>::New();
-	cylinderSource->SetCenter(0.0, 0.0, 0.0);
-	cylinderSource->SetRadius(5.0);
-	cylinderSource->SetHeight(7.0);
-	cylinderSource->SetResolution(100);
-
-	// Create a mapper and actor
-	vtkSmartPointer<vtkPolyDataMapper> mapper =
-		vtkSmartPointer<vtkPolyDataMapper>::New();
-	mapper->SetInputConnection(cylinderSource->GetOutputPort());
-	vtkSmartPointer<vtkActor> actor =
-		vtkSmartPointer<vtkActor>::New();
-	actor->SetMapper(mapper);
-
-	//Create a renderer, render window, and interactor
-	vtkSmartPointer<vtkRenderer> renderer =
-		vtkSmartPointer<vtkRenderer>::New();
-	vtkSmartPointer<vtkRenderWindow> renderWindow =
-		vtkSmartPointer<vtkRenderWindow>::New();
-	renderWindow->AddRenderer(renderer);
-	vtkSmartPointer<vtkRenderWindowInteractor> renderWindowInteractor =
-		vtkSmartPointer<vtkRenderWindowInteractor>::New();
-	renderWindowInteractor->SetRenderWindow(renderWindow);
-
-	// Add the actor to the scene
-	renderer->AddActor(actor);
-	renderer->SetBackground(.1, .3, .2); // Background color dark green
-
-										 // Render and interact
-	renderWindow->SetWindowName("Cylinder");
-	renderWindow->Render();
-	renderWindowInteractor->Start();
-}
-
-void makeHexahedron() {
-	int numberOfVertices = 8;
-
-	vtkSmartPointer<vtkPoints> points = vtkSmartPointer<vtkPoints>::New();
-	points->InsertNextPoint(0.0, 0.0, 0.0);
-	points->InsertNextPoint(0.5, 0.0, 0.0);
-	points->InsertNextPoint(1.0, 1.0, 0.0);
-	points->InsertNextPoint(0.0, 1.0, 0.0);
-	points->InsertNextPoint(0.0, 0.0, 1.0);
-	points->InsertNextPoint(1.0, 0.0, 1.0);
-	points->InsertNextPoint(1.0, 1.0, 1.0);
-	points->InsertNextPoint(0.0, 1.0, 1.0);
-
-	// Create a hexahedron from the points
-	vtkSmartPointer<vtkHexahedron> hex = vtkSmartPointer<vtkHexahedron>::New();
-	for (int i = 0; i < numberOfVertices; ++i) {
-		hex->GetPointIds()->SetId(i, i);
-	}
-
-	// Add the points and hexahedron to an unstructured grid
-	vtkSmartPointer<vtkUnstructuredGrid> uGrid =
-		vtkSmartPointer<vtkUnstructuredGrid>::New();
-	uGrid->SetPoints(points);
-	uGrid->InsertNextCell(hex->GetCellType(), hex->GetPointIds());
-
-	// Create a mapper and actor
-	vtkSmartPointer<vtkDataSetMapper> mapper =
-		vtkSmartPointer<vtkDataSetMapper>::New();
-	mapper->SetInputData(uGrid);
-	vtkSmartPointer<vtkActor> actor =
-		vtkSmartPointer<vtkActor>::New();
-	actor->SetMapper(mapper);
-
-	//Create a renderer, render window, and interactor
-	vtkSmartPointer<vtkRenderer> renderer =
-		vtkSmartPointer<vtkRenderer>::New();
-	vtkSmartPointer<vtkRenderWindow> renderWindow =
-		vtkSmartPointer<vtkRenderWindow>::New();
-	renderWindow->AddRenderer(renderer);
-	vtkSmartPointer<vtkRenderWindowInteractor> renderWindowInteractor =
-		vtkSmartPointer<vtkRenderWindowInteractor>::New();
-	renderWindowInteractor->SetRenderWindow(renderWindow);
-
-	// Add the actor to the scene
-	renderer->AddActor(actor);
-	renderer->SetBackground(.1, .3, .2); // Background color dark green
-
-										 // Render and interact
-	renderWindow->SetWindowName("Cube?");
-	renderWindow->Render();
-	renderWindowInteractor->Start();
-}
-
-
-
+#include <vtkLookupTable.h>
+#include <thread>
+#include <vtkInteractorStyleTrackballCamera.h>
 
 /**
 * Number of cell we have per axis
@@ -179,6 +88,10 @@ const double ChangeOfTimeStepSize = 0.1;
 const double PPESolverThreshold = 1e-4;
 const double TerminalTime = 10.0;
 
+double maxPressure;
+double minPressure;
+vtkSmartPointer<vtkLookupTable> colorLookupTable;
+vtkSmartPointer<vtkDataSetMapper> pressureMapper;
 
 /**
 * Switch on to have a couple of security checks
@@ -337,7 +250,7 @@ void validateThatEntriesAreBounded(const std::string&  callingRoutine) {
 #endif
 }
 
-vtkSmartPointer<vtkRenderWindow> makeGridImageData(vtkSmartPointer<vtkImageData> imageData) {
+vtkSmartPointer<vtkRenderer> makeGridImageData(vtkSmartPointer<vtkImageData> imageData) {
 
 	// Number of points is 1 more than number of cells
 	imageData->SetDimensions(numberOfCellsPerAxisX+1, numberOfCellsPerAxisY+1, numberOfCellsPerAxisZ+1);
@@ -363,15 +276,53 @@ vtkSmartPointer<vtkRenderWindow> makeGridImageData(vtkSmartPointer<vtkImageData>
 	pressures->SetName("Pressure");
 	pressures->SetNumberOfValues(imageData->GetNumberOfCells());
 
+	maxPressure = 0;
+	minPressure = 0;
+
 	for (int iz = 1; iz<numberOfCellsPerAxisZ + 1; iz++) {
 		for (int iy = 1; iy<numberOfCellsPerAxisY + 1; iy++) {
 			for (int ix = 1; ix<numberOfCellsPerAxisX + 1; ix++) {
-				pressures->SetValue(numberOfCellsPerAxisX*numberOfCellsPerAxisY*(iz - 1) + numberOfCellsPerAxisX*(iy - 1) + (ix - 1), p[getCellIndex(ix, iy, iz)]);
+				double index = numberOfCellsPerAxisX*numberOfCellsPerAxisY*(iz - 1) + numberOfCellsPerAxisX*(iy - 1) + (ix - 1);
+				double iPressure = p[getCellIndex(ix, iy, iz)];
+				if (iPressure > maxPressure) {
+					maxPressure = iPressure;
+				}
+				if (iPressure < minPressure) {
+					minPressure = iPressure;
+				}
+
+				pressures->SetValue(index, p[getCellIndex(ix, iy, iz)]);
 			}
 		}
 	}
 
+	cout << minPressure << endl;
+	cout << maxPressure << endl;
+
 	imageData->GetCellData()->SetScalars(pressures);
+
+	// Create the color map
+	colorLookupTable = vtkSmartPointer<vtkLookupTable>::New();
+	//colorLookupTable->SetNumberOfTableValues(64);
+	//colorLookupTable->SetHueRange(0.0, 0.667);
+	//colorLookupTable->SetTableRange(minPressure, maxPressure);
+	//colorLookupTable->Build();
+
+	//// Generate the colors for each point based on the color map
+	//vtkSmartPointer<vtkUnsignedCharArray> colors =
+	//	vtkSmartPointer<vtkUnsignedCharArray>::New();
+	//colors->SetNumberOfComponents(3);
+	//colors->SetName("Colors");
+
+	//for (int i = 0; i < imageData->GetNumberOfCells(); i++) {
+	//	
+	//	double pressureColour[3];
+	//	colorLookupTable->GetColor(imageData->GetCellData()->get, pressureColour);
+
+	//	double pressure;
+	//	imageData->GetCell(i)->;
+
+	//}
 
 	vtkSmartPointer<vtkAssignAttribute> scalars =
 		vtkSmartPointer<vtkAssignAttribute>::New();
@@ -400,7 +351,7 @@ vtkSmartPointer<vtkRenderWindow> makeGridImageData(vtkSmartPointer<vtkImageData>
 	glyphs->SetIndexModeToOff();
 	glyphs->Update();
 
-	// Visualize
+	// Visualize vectors
 	vtkSmartPointer<vtkPolyDataMapper> mapper =
 		vtkSmartPointer<vtkPolyDataMapper>::New();
 	mapper->SetInputConnection(glyphs->GetOutputPort());
@@ -408,17 +359,29 @@ vtkSmartPointer<vtkRenderWindow> makeGridImageData(vtkSmartPointer<vtkImageData>
 		vtkSmartPointer<vtkActor>::New();
 	actor->SetMapper(mapper);
 
+	// Visualise scalars
+	pressureMapper =
+		vtkSmartPointer<vtkDataSetMapper>::New();
+	pressureMapper->SetInputData(imageData);
+	//pressureMapper->SetScalarVisibility(true);
+	//pressureMapper->SetScalarModeToUseCellData();
+	pressureMapper->SetLookupTable(colorLookupTable);
+	//pressureMapper->SetColorModeToMapScalars();
+	pressureMapper->SetScalarRange(minPressure, maxPressure);
+	//pressureMapper->CreateDefaultLookupTable();
+	vtkSmartPointer<vtkActor> pressureActor =
+		vtkSmartPointer<vtkActor>::New();
+	pressureActor->SetMapper(pressureMapper);
+
 	// Visualize
 	vtkSmartPointer<vtkRenderer> renderer =
 		vtkSmartPointer<vtkRenderer>::New();
-	vtkSmartPointer<vtkRenderWindow> renderWindow =
-		vtkSmartPointer<vtkRenderWindow>::New();
-	renderWindow->AddRenderer(renderer);
 
 	renderer->AddActor(actor);
+	renderer->AddActor(pressureActor);
 	renderer->SetBackground(.2, .3, .4);
 
-	return renderWindow;
+	return renderer;
 	
 }
 
@@ -439,90 +402,41 @@ void updateVisualisation(vtkSmartPointer<vtkImageData> imageData) {
 	}
 
 	imageData->GetPointData()->SetVectors(u);
-}
+	//imageData->Modified();
 
-void makeGrid() {
-	// Create a grid
-	vtkSmartPointer<vtkStructuredGrid> structuredGrid =
-		vtkSmartPointer<vtkStructuredGrid>::New();
+	vtkSmartPointer<vtkDoubleArray> pressures = vtkSmartPointer<vtkDoubleArray>::New();
+	pressures->SetName("Pressure");
+	pressures->SetNumberOfValues(imageData->GetNumberOfCells());
 
-	vtkSmartPointer<vtkPoints> points =
-		vtkSmartPointer<vtkPoints>::New();
-	unsigned int numi = numberOfCellsPerAxisX + 1;
-	unsigned int numj = numberOfCellsPerAxisY + 1;
-	unsigned int numk = numberOfCellsPerAxisZ + 1;
+	maxPressure = 0;
+	minPressure = 0;
 
+	for (int iz = 1; iz<numberOfCellsPerAxisZ + 1; iz++) {
+		for (int iy = 1; iy<numberOfCellsPerAxisY + 1; iy++) {
+			for (int ix = 1; ix<numberOfCellsPerAxisX + 1; ix++) {
+				double index = numberOfCellsPerAxisX*numberOfCellsPerAxisY*(iz - 1) + numberOfCellsPerAxisX*(iy - 1) + (ix - 1);
+				double iPressure = p[getCellIndex(ix, iy, iz)];
+				if (iPressure > maxPressure) {
+					maxPressure = iPressure;
+				}
+				if (iPressure < minPressure) {
+					minPressure = iPressure;
+				}
 
-
-	for (unsigned int k = 0; k < numk; k++)
-	{
-		for (unsigned int j = 0; j < numj; j++)
-		{
-			for (unsigned int i = 0; i < numi; i++)
-			{
-				points->InsertNextPoint(i, j, k);
+				pressures->SetValue(index, p[getCellIndex(ix, iy, iz)]);
 			}
 		}
 	}
 
-	// Specify the dimensions of the grid
-	structuredGrid->SetDimensions(numi, numj, numk);
-	structuredGrid->SetPoints(points);
+	cout << minPressure << endl;
+	cout << maxPressure << endl;
 
-	std::cout << "There are " << structuredGrid->GetNumberOfPoints() << " points." << std::endl; // there should be 2*3*2 = 12 points
-	std::cout << "There are " << structuredGrid->GetNumberOfCells() << " cells." << std::endl; // The 12 points define the corners of 2 cubes/cells (4 points are shared by both cubes)
-
-	vtkSmartPointer<vtkStructuredGridGeometryFilter> geometryFilter =
-		vtkSmartPointer<vtkStructuredGridGeometryFilter>::New();
-#if VTK_MAJOR_VERSION <= 5
-	geometryFilter->SetInputConnection(structuredGrid->GetProducerPort());
-#else
-	geometryFilter->SetInputData(structuredGrid);
-#endif
-	geometryFilter->Update();
-
-	vtkSmartPointer<vtkArrowSource> arrowSource = vtkSmartPointer<vtkArrowSource>::New();
-
-	vtkSmartPointer<vtkGlyph3D> glyph3D = vtkSmartPointer<vtkGlyph3D>::New();
-	glyph3D->SetSourceConnection(arrowSource->GetOutputPort());
-	glyph3D->SetVectorModeToUseNormal();
-#if VTK_MAJOR_VERSION <= 5
-	glyph3D->SetInput(input);
-#else
-	glyph3D->SetInputData(structuredGrid);
-#endif
-	glyph3D->SetScaleFactor(.2);
-	glyph3D->Update();
-
-	// Visualize
-	vtkSmartPointer<vtkPolyDataMapper> mapper =
-		vtkSmartPointer<vtkPolyDataMapper>::New();
-	mapper->SetInputConnection(glyph3D->GetOutputPort());
-	vtkSmartPointer<vtkActor> actor =
-		vtkSmartPointer<vtkActor>::New();
-	actor->SetMapper(mapper);
-
-	// Visualize
-	vtkSmartPointer<vtkRenderer> renderer =
-		vtkSmartPointer<vtkRenderer>::New();
-	vtkSmartPointer<vtkRenderWindow> renderWindow =
-		vtkSmartPointer<vtkRenderWindow>::New();
-	renderWindow->AddRenderer(renderer);
-	vtkSmartPointer<vtkRenderWindowInteractor> renderWindowInteractor =
-		vtkSmartPointer<vtkRenderWindowInteractor>::New();
-	renderWindowInteractor->SetRenderWindow(renderWindow);
-
-	renderer->AddActor(actor);
-	renderer->SetBackground(.2, .3, .4);
-
-	renderWindow->Render();
-	renderWindowInteractor->Start();
+	imageData->GetCellData()->SetScalars(pressures);
+	colorLookupTable->SetTableRange(minPressure, maxPressure);
+	colorLookupTable->Build();
+	pressureMapper->SetScalarRange(minPressure, maxPressure);
+	//pressureMapper->Update();
 }
-
-void visualise() {
-
-}
-
 
 /**
 * Plot a vtk file. This function probably never has to be changed when you do
@@ -1166,6 +1080,38 @@ void setVelocityBoundaryConditions(double time) {
 	validateThatEntriesAreBounded("setVelocityBoundaryConditions(double)[out]");
 }
 
+class RenderCommand : public vtkCommand
+{
+public:
+	static RenderCommand * New()
+	{
+		return new RenderCommand;
+	}
+
+	void Execute(vtkObject * caller,
+		unsigned long eventId,
+		void * callData)
+	{
+		static_cast<vtkRenderWindowInteractor *> (caller)->Render();
+	}
+};
+
+void interact(vtkSmartPointer<vtkRenderWindowInteractor> renderWindowInteractor) {
+	// ParaView style
+	vtkSmartPointer<vtkInteractorStyleTrackballCamera> style =
+		vtkSmartPointer<vtkInteractorStyleTrackballCamera>::New();
+
+	renderWindowInteractor->SetInteractorStyle(style);
+	
+	renderWindowInteractor->Initialize();
+	
+	// 30 FPS
+	renderWindowInteractor->CreateRepeatingTimer(30);
+	RenderCommand * renderCommand = RenderCommand::New();
+	renderWindowInteractor->AddObserver(vtkCommand::TimerEvent, renderCommand);
+
+	renderWindowInteractor->Start();
+}
 
 int main(int argc, char *argv[]) {
 	if (argc != 4) {
@@ -1173,6 +1119,7 @@ int main(int argc, char *argv[]) {
 		std::cout << "    number-of-elements-per-axis  Resolution. Start with 20, but try to increase as much as possible later." << std::endl;
 		std::cout << "    time-between-plots           Determines how many files are written. Set to 0 to switch off plotting (for performance studies)." << std::endl;
 		std::cout << "    reynolds-number              Use something in-between 1 and 1000. Determines viscosity of fluid." << std::endl;
+		//std::cout << "    plane						   The plane to cut. [x,y or z]." << std::endl;
 		return 1;
 	}
 
@@ -1181,6 +1128,7 @@ int main(int argc, char *argv[]) {
 	numberOfCellsPerAxisZ = atoi(argv[1]);
 	double timeBetweenPlots = atof(argv[2]);
 	ReynoldsNumber = atof(argv[3]);
+	//char plane = atof(argv[4]);
 
 	std::cout << "Re=" << ReynoldsNumber << std::endl;
 
@@ -1199,16 +1147,22 @@ int main(int argc, char *argv[]) {
 	vtkSmartPointer<vtkImageData> imageData = vtkSmartPointer<vtkImageData>::New();
 	vtkSmartPointer<vtkRenderWindow> renderWindow = vtkSmartPointer<vtkRenderWindow>::New();
 	vtkSmartPointer<vtkRenderWindowInteractor> renderWindowInteractor = vtkSmartPointer<vtkRenderWindowInteractor>::New();
+	vtkSmartPointer<vtkRenderer> renderer;
 
 	if (timeBetweenPlots>0.0) {
-		//Open visualisation window
-		//plotVTKFile();
-		renderWindow = makeGridImageData(imageData);
+
+		// Get initial conditions
+		renderer = makeGridImageData(imageData);
+		renderWindow->AddRenderer(renderer);
 		renderWindowInteractor->SetRenderWindow(renderWindow);
-		renderWindowInteractor->Initialize();
-		renderWindowInteractor->Render();
-		std::cout << "start condition is plotted" << std::endl;
+
+		std::cout << "start condition is calculated" << std::endl;
 	}
+
+
+
+	// Start event loop in new thread
+	std::thread t1(interact, renderWindowInteractor);
 
 	double t = 0.0;
 	double tOfLastSnapshot = 0.0;
@@ -1223,10 +1177,7 @@ int main(int argc, char *argv[]) {
 		setNewVelocities();
 
 		if (timeBetweenPlots>0.0 && (t - tOfLastSnapshot>timeBetweenPlots)) {
-			//plotVTKFile();
 			updateVisualisation(imageData);
-			renderWindowInteractor->Initialize();
-			renderWindowInteractor->Render();
 			tOfLastSnapshot = t;
 		}
 
@@ -1251,6 +1202,8 @@ int main(int argc, char *argv[]) {
 
 	std::cout << "free data structures" << std::endl;
 	freeDataStructures();
+
+	t1.join();
 
 	return 0;
 }
