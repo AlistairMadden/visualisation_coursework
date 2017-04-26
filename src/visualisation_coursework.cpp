@@ -1,16 +1,17 @@
 //
 // Quick start:
 //
-// - Compile the code with
-//     g++ -O2 code-2016.cpp -o Cavity
+//
+//
+// - Navigate to the src directory and use CMake to build the project and compile the code
+//		cd src
+//		cmake .
+//		make
 //
 // - Run the code
-//     ./Cavity 12 1e-4 400 driven-cavity
+//     ./visualisation_coursework 12 1e-4 400
 //
-// - Open Paraview and load all the output...vtk files in one rush.
-//
-// - Select glyphs from the toolbox. Press apply and press the play button
-//   (arrow top right).
+// Tested on university PCs in the project room.
 //
 
 
@@ -50,6 +51,7 @@
 #include <thread>
 #include <vtkInteractorStyleTrackballCamera.h>
 #include <vtkCommand.h>
+#include <mutex>
 
 /**
 * Number of cell we have per axis
@@ -93,6 +95,8 @@ double maxPressure;
 double minPressure;
 vtkSmartPointer<vtkLookupTable> colorLookupTable;
 vtkSmartPointer<vtkDataSetMapper> pressureMapper;
+
+std::mutex dataMutex;
 
 /**
 * Switch on to have a couple of security checks
@@ -304,26 +308,6 @@ vtkSmartPointer<vtkRenderer> makeGridImageData(vtkSmartPointer<vtkImageData> ima
 
 	// Create the color map
 	colorLookupTable = vtkSmartPointer<vtkLookupTable>::New();
-	//colorLookupTable->SetNumberOfTableValues(64);
-	//colorLookupTable->SetHueRange(0.0, 0.667);
-	//colorLookupTable->SetTableRange(minPressure, maxPressure);
-	//colorLookupTable->Build();
-
-	//// Generate the colors for each point based on the color map
-	//vtkSmartPointer<vtkUnsignedCharArray> colors =
-	//	vtkSmartPointer<vtkUnsignedCharArray>::New();
-	//colors->SetNumberOfComponents(3);
-	//colors->SetName("Colors");
-
-	//for (int i = 0; i < imageData->GetNumberOfCells(); i++) {
-	//	
-	//	double pressureColour[3];
-	//	colorLookupTable->GetColor(imageData->GetCellData()->get, pressureColour);
-
-	//	double pressure;
-	//	imageData->GetCell(i)->;
-
-	//}
 
 	vtkSmartPointer<vtkAssignAttribute> scalars =
 		vtkSmartPointer<vtkAssignAttribute>::New();
@@ -1109,6 +1093,7 @@ public:
 		unsigned long eventId,
 		void * callData)
 	{
+		std::lock_guard<std::mutex> guard(dataMutex);
 		static_cast<vtkRenderWindowInteractor *> (caller)->Render();
 	}
 };
@@ -1145,6 +1130,7 @@ int main(int argc, char *argv[]) {
 	numberOfCellsPerAxisZ = atoi(argv[1]);
 	double timeBetweenPlots = atof(argv[2]);
 	ReynoldsNumber = atof(argv[3]);
+	// Unfortunately unimplemented
 	//char plane = atof(argv[4]);
 
 	std::cout << "Re=" << ReynoldsNumber << std::endl;
@@ -1191,6 +1177,9 @@ int main(int argc, char *argv[]) {
 		setNewVelocities();
 
 		if (timeBetweenPlots>0.0 && (t - tOfLastSnapshot>timeBetweenPlots)) {
+			// Update data
+			// Tried to enforce safety, but alas.
+			std::lock_guard<std::mutex> guard(dataMutex);
 			updateVisualisation(imageData);
 			tOfLastSnapshot = t;
 		}
