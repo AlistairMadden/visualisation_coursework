@@ -327,13 +327,24 @@ vtkSmartPointer<vtkRenderer> makeGridImageData(vtkSmartPointer<vtkImageData> ima
 
 	vtkSmartPointer<vtkAssignAttribute> scalars =
 		vtkSmartPointer<vtkAssignAttribute>::New();
+
+#if VTK_MAJOR_VERSION <= 5
+	scalars->SetInput(imageData);
+#else
 	scalars->SetInputData(imageData);
+#endif // VTK_MAJOR_VERSION <= 5
+
 	scalars->Assign("Pressure", vtkDataSetAttributes::SCALARS,
 		vtkAssignAttribute::CELL_DATA);
 
 	vtkSmartPointer<vtkAssignAttribute> vectors =
 		vtkSmartPointer<vtkAssignAttribute>::New();
+#if VTK_MAJOR_VERSION <= 5
+	vectors->SetInput(imageData);
+#else
 	vectors->SetInputData(imageData);
+#endif // VTK_MAJOR_VERSION <= 5
+
 	vectors->Assign("velocity", vtkDataSetAttributes::VECTORS,
 		vtkAssignAttribute::POINT_DATA);
 
@@ -363,7 +374,13 @@ vtkSmartPointer<vtkRenderer> makeGridImageData(vtkSmartPointer<vtkImageData> ima
 	// Visualise scalars
 	pressureMapper =
 		vtkSmartPointer<vtkDataSetMapper>::New();
+
+#if VTK_MAJOR_VERSION <= 5
+	pressureMapper->SetInput(imageData);
+#else
 	pressureMapper->SetInputData(imageData);
+#endif // VTK_MAJOR_VERSION <= 5
+
 	//pressureMapper->SetScalarVisibility(true);
 	//pressureMapper->SetScalarModeToUseCellData();
 	pressureMapper->SetLookupTable(colorLookupTable);
